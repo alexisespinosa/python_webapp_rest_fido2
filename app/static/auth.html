@@ -64,6 +64,12 @@
       registerKey()
     };
 
+    const authenticationForm = document.getElementById("authenticationForm");
+    authenticationForm.onsubmit = function (event) {
+      event.preventDefault();
+      authenticate()
+    };
+
     function registerKey() {
       const registerModalEl = document.getElementById('registerModal')
       const registerModal = bootstrap.Modal.getInstance(registerModalEl)
@@ -106,6 +112,52 @@
                         }
                         },
                       function(reason) {
+                        alert(reason);
+                      });
+    }
+
+
+    function authenticate() {
+      const formData = new FormData(authenticationForm);
+      const beginRequest = new Request('/auth/authenticate/begin', {
+        method: 'POST', headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }, body: JSON.stringify({username: formData.get('username')})
+      });
+
+      fetch(beginRequest)
+              .then(function (response) {
+                if (response.ok) return response.arrayBuffer();
+                throw new Error('No credential available to authenticate!');
+              })
+              .then(CBOR.decode)
+              .then(function (options) {
+                return navigator.credentials.get(options);
+              })
+              .then(
+                      function (assertion) {
+                        return fetch('/auth/authenticate/complete', {
+                          method: 'POST',
+                          headers: {'Content-Type': 'application/cbor'},
+                          body: CBOR.encode({
+                            "credentialId": new Uint8Array(assertion.rawId),
+                            "authenticatorData": new Uint8Array(assertion.response.authenticatorData),
+                            "clientDataJSON": new Uint8Array(assertion.response.clientDataJSON),
+                            "signature": new Uint8Array(assertion.response.signature),
+                            "username": formData.get('username')
+                          })
+                        })
+                      })
+              .then(
+                      function (response) {
+                        const stat = response.ok ? 'successful' : 'unsuccessful';
+                        if (stat === 'successful') {
+                          window.location = '/';
+                        }
+                        alert('Authentication ' + stat + ' More details in server log...');
+                      },
+                      function (reason) {
                         alert(reason);
                       });
     }

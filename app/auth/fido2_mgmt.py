@@ -1,19 +1,17 @@
 import logging
-from binascii import b2a_hex
 
 from fido2 import cbor
 from fido2.client import ClientData
-from fido2.ctap2 import AttestedCredentialData, AttestationObject
+from fido2.ctap2 import AttestedCredentialData, AttestationObject, AuthenticatorData
 from fido2.server import Fido2Server
 from fido2.utils import websafe_decode, websafe_encode
 from fido2.webauthn import PublicKeyCredentialRpEntity
-from flask import request, session, Blueprint
+from flask import request, session, Blueprint, abort
 
-import app.repository.user_repository as user_repository
 import app.repository.user_credential_repository as user_credential_repository
-
-from app.model.user_credential import UserCredential
+import app.repository.user_repository as user_repository
 from app.database import transaction
+from app.model.user_credential import UserCredential
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +66,49 @@ def register_complete():
     user_credential_repository.save_credential(user, credential_name, encoded_credential_data)
 
     logger.info('FIDO2 registration complete for: ' + user.name)
+    return cbor.encode({"status": "OK"})
+
+
+@auth_blueprint.route("/authenticate/begin", methods=["POST"])
+def authenticate_begin():
+    request_data = request.get_json()
+    user_credentials = user_credential_repository.find_by_username(request_data['username'])
+
+    if len(user_credentials) == 0:
+        abort(404)
+
+    logger.info('Begin FIDO2 authentication for: ' + request_data['username'])
+
+    credentials = _decode_credentials(user_credentials)
+    auth_data, state = server.authenticate_begin(credentials)
+    session["state"] = state
+    return cbor.encode(auth_data)
+
+
+@auth_blueprint.route("/authenticate/complete", methods=["POST"])
+def authenticate_complete():
+    data = cbor.decode(request.get_data())
+    user = user_repository.find_by_name(data['username'])
+
+    if len(user.credentials) == 0:
+        abort(404)
+
+    credentials = _decode_credentials(user.credentials)
+    credential_id = data["credentialId"]
+    client_data = ClientData(data["clientDataJSON"])
+    auth_data = AuthenticatorData(data["authenticatorData"])
+    signature = data["signature"]
+
+    server.authenticate_complete(
+        session.pop("state"),
+        credentials,
+        credential_id,
+        client_data,
+        auth_data,
+        signature,
+    )
+
+    logger.info('FIDO2 authentication complete for: ' + user.name)
     return cbor.encode({"status": "OK"})
 
 

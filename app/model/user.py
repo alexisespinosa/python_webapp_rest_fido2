@@ -10,6 +10,6 @@ class User(UserMixin, db.Model):
 
     # Using with_variant enables auto_increment in sqlite
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
-    name = Column(String)
+    name = Column(String, unique=True)
 
     credentials = relationship("UserCredential", back_populates='user', cascade="all, delete")
