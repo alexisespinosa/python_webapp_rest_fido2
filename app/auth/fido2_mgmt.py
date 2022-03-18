@@ -7,6 +7,7 @@ from fido2.server import Fido2Server
 from fido2.utils import websafe_decode, websafe_encode
 from fido2.webauthn import PublicKeyCredentialRpEntity
 from flask import request, session, Blueprint, abort
+from flask_login import login_user
 
 import app.repository.user_credential_repository as user_credential_repository
 import app.repository.user_repository as user_repository
@@ -107,6 +108,8 @@ def authenticate_complete():
         auth_data,
         signature,
     )
+
+    login_user(user)
 
     logger.info('FIDO2 authentication complete for: ' + user.name)
     return cbor.encode({"status": "OK"})
